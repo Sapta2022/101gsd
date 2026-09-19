@@ -1,0 +1,89 @@
+name: Deploy to staging
+
+# Fires on every push to the "staging" branch. Builds a production-ready
+# copy of the app (vendor/ and compiled assets included, since the cPanel
+# host has no SSH to run composer/npm itself), uploads it over FTPS, then
+# calls the deploy hook so Laravel runs its post-deploy commands
+# (migrate, config:cache, route:cache, ...) — see deploy/hook.php.
+
+on:
+  push:
+    branches: [staging]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, bcmath, ctype, curl, dom, fileinfo, json, mysql, openssl, pdo, tokenizer, xml, zip
+          coverage: none
+
+      - name: Install PHP dependencies (production only)
+        run: composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Upload release over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.STAGING_FTP_HOST }}
+          username: ${{ secrets.STAGING_FTP_USERNAME }}
+          password: ${{ secrets.STAGING_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          server-dir: ${{ secrets.STAGING_FTP_SERVER_DIR }}
+          # Never mirror-delete: only ever add/update files this build
+          # produces. A missing file on the server (deploy-hook.config.php,
+          # the renamed public entrypoint, storage/ contents) must never be
+          # removed just because this checkout doesn't contain it.
+          dangerous-clean-slate: false
+          # Nothing here is deleted from the checkout — the workflow still
+          # needs .github/scripts after this step — it is only left out of
+          # the upload. Never uploaded: dev/CI-only files, and (critically)
+          # server-only state: the live .env, writable storage (uploads,
+          # logs, cache, sessions), and the deploy hook's own secret config.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            node_modules/**
+            tests/**
+            .env.example
+            .env.ci
+            phpunit.xml
+            README.md
+            **/.env
+            storage/app/**
+            storage/framework/cache/**
+            storage/framework/sessions/**
+            storage/framework/views/**
+            storage/logs/**
+            deploy/deploy-hook.config.php
+
+      - name: Trigger post-deploy Artisan tasks
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.STAGING_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.STAGING_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true

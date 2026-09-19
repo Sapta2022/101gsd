@@ -1,0 +1,37 @@
+# --- Laravel 13 defaults ---
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.env.staging
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# --- 101GSD deploy setup ---
+# Written once by hand on each server (local/staging/live all have their own);
+# never committed, since it carries the deploy hook's HMAC secret.
+deploy/deploy-hook.config.php
+
+# WAMP local-dev artifacts
+/wamp-logs

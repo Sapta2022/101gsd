@@ -1,0 +1,87 @@
+name: Deploy to live
+
+# Fires on every push to "main" (the live branch). Identical build-and-deploy
+# steps to staging, pointed at the live FTP folder and live deploy hook.
+#
+# This uses the "production" GitHub Environment, which you configure with a
+# required reviewer (Settings -> Environments -> production -> Required
+# reviewers). That makes every live deploy pause for a manual approval
+# before it touches the server, even though the push already happened —
+# see the setup guide, step "Protect the live environment".
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, bcmath, ctype, curl, dom, fileinfo, json, mysql, openssl, pdo, tokenizer, xml, zip
+          coverage: none
+
+      - name: Install PHP dependencies (production only)
+        run: composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Upload release over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.LIVE_FTP_HOST }}
+          username: ${{ secrets.LIVE_FTP_USERNAME }}
+          password: ${{ secrets.LIVE_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR }}
+          # Never mirror-delete: only ever add/update files this build
+          # produces. A missing file on the server (deploy-hook.config.php,
+          # the renamed public entrypoint, storage/ contents) must never be
+          # removed just because this checkout doesn't contain it.
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            node_modules/**
+            tests/**
+            .env.example
+            .env.ci
+            phpunit.xml
+            README.md
+            **/.env
+            storage/app/**
+            storage/framework/cache/**
+            storage/framework/sessions/**
+            storage/framework/views/**
+            storage/logs/**
+            deploy/deploy-hook.config.php
+
+      - name: Trigger post-deploy Artisan tasks
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.LIVE_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.LIVE_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true

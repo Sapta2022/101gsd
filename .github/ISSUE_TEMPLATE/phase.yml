@@ -1,0 +1,36 @@
+name: SOW phase
+description: Track one delivery phase from the Scope of Work (phases 1-10)
+title: "[Phase N] "
+labels: ["phase"]
+body:
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - "1 - Foundation: settings, static pages, SEO manager, public site skeleton"
+        - "2 - Club module + Razorpay linked account"
+        - "3 - Club self-registration, subscription, dashboard home"
+        - "4 - Show setup: classes, categories, exhibit numbering"
+        - "5 - Dog owner registration, OTP login, dog profiles"
+        - "6 - Entry engine: classification, fees, coupons, Route transfers"
+        - "7 - Entry management, exports, catalogue, judging sheets"
+        - "8 - Cancellations, refunds, settlement views"
+        - "9 - Notifications: email, SMS, reminders"
+        - "10 - Reports, archival, hardening, UAT, go-live"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope for this phase
+      description: Paste the relevant section(s) from the SOW.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What has to be true, and demonstrable on staging, before this phase is done.
+    validations:
+      required: true
