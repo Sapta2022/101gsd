@@ -1,4 +1,5 @@
 <?php
+
 /**
  * The actual HTTP entrypoint for the deploy hook — copy this file BY HAND
  * into public/ on each server (staging and live each need their own copy),
@@ -20,4 +21,4 @@
  * Artisan commands — lives in deploy/hook.php, outside the web root.
  */
 
-require __DIR__ . '/../deploy/hook.php';
+require __DIR__.'/../deploy/hook.php';
