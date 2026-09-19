@@ -11,12 +11,12 @@
  */
 
 return [
-    'secret'   => 'REPLACE-WITH-A-LONG-RANDOM-VALUE',
+    'secret' => 'REPLACE-WITH-A-LONG-RANDOM-VALUE',
 
     // Path to this release's Laravel application root (the folder that
     // contains artisan, bootstrap/, vendor/) — usually one level up from
     // wherever you placed this deploy/ folder.
-    'app_path' => __DIR__ . '/../',
+    'app_path' => __DIR__.'/../',
 
     // Reject any request whose X-Deploy-Timestamp is more than this many
     // seconds away from the server's own clock.

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 101GSD deploy hook — runs post-deploy Artisan tasks with no shell/SSH access.
  *
@@ -25,6 +26,9 @@
  */
 
 declare(strict_types=1);
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Artisan;
 
 header('Content-Type: application/json');
 
@@ -38,7 +42,7 @@ header('Content-Type: application/json');
 //          'max_skew' => 300,
 //      ];
 // ---------------------------------------------------------------------
-$configFile = __DIR__ . '/deploy-hook.config.php';
+$configFile = __DIR__.'/deploy-hook.config.php';
 
 if (! is_file($configFile)) {
     http_response_code(500);
@@ -48,7 +52,7 @@ if (! is_file($configFile)) {
 
 $config = require $configFile;
 
-$secret  = (string) ($config['secret'] ?? '');
+$secret = (string) ($config['secret'] ?? '');
 $appPath = rtrim((string) ($config['app_path'] ?? ''), '/');
 $maxSkew = (int) ($config['max_skew'] ?? 300);
 
@@ -61,9 +65,9 @@ if ($secret === '' || $appPath === '' || ! is_dir($appPath)) {
 // ---------------------------------------------------------------------
 // 2. Verify signature + freshness before touching anything else.
 // ---------------------------------------------------------------------
-$raw       = file_get_contents('php://input') ?: '';
+$raw = file_get_contents('php://input') ?: '';
 $sigHeader = $_SERVER['HTTP_X_DEPLOY_SIGNATURE'] ?? '';
-$tsHeader  = $_SERVER['HTTP_X_DEPLOY_TIMESTAMP'] ?? '';
+$tsHeader = $_SERVER['HTTP_X_DEPLOY_TIMESTAMP'] ?? '';
 
 function deploy_hook_fail(int $code, string $message): never
 {
@@ -80,7 +84,7 @@ if (abs(time() - (int) $tsHeader) > $maxSkew) {
     deploy_hook_fail(401, 'timestamp outside allowed window');
 }
 
-$expected = 'sha256=' . hash_hmac('sha256', $tsHeader . '.' . $raw, $secret);
+$expected = 'sha256='.hash_hmac('sha256', $tsHeader.'.'.$raw, $secret);
 
 if (! hash_equals($expected, $sigHeader)) {
     deploy_hook_fail(401, 'invalid signature');
@@ -101,33 +105,33 @@ if (! is_array($payload)) {
 $runMigrations = ! isset($payload['migrate']) || $payload['migrate'] !== false;
 
 chdir($appPath);
-require $appPath . '/vendor/autoload.php';
+require $appPath.'/vendor/autoload.php';
 
-/** @var \Illuminate\Foundation\Application $app */
-$app = require $appPath . '/bootstrap/app.php';
+/** @var Application $app */
+$app = require $appPath.'/bootstrap/app.php';
 
-$kernel = $app->make(\Illuminate\Contracts\Console\Kernel::class);
+$kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
 
-$steps  = [];
+$steps = [];
 $failed = false;
 
 /**
  * Run one Artisan command, capture its exit code and output, and stop
  * the whole deploy (leaving the app in maintenance mode) on first failure.
  */
-$run = function (string $command, array $arguments = []) use ($app, &$steps, &$failed): void {
+$run = function (string $command, array $arguments = []) use (&$steps, &$failed): void {
     if ($failed) {
         return;
     }
 
-    $exit = \Illuminate\Support\Facades\Artisan::call($command, $arguments);
-    $out  = \Illuminate\Support\Facades\Artisan::output();
+    $exit = Artisan::call($command, $arguments);
+    $out = Artisan::output();
 
     $steps[] = [
-        'command'  => $command,
-        'exit'     => $exit,
-        'output'   => trim($out),
+        'command' => $command,
+        'exit' => $exit,
+        'output' => trim($out),
     ];
 
     if ($exit !== 0) {
@@ -143,7 +147,7 @@ $maintenanceSecret = bin2hex(random_bytes(8));
 try {
     $run('down', [
         '--secret' => $maintenanceSecret,
-        '--retry'  => 60,
+        '--retry' => 60,
     ]);
 
     if ($runMigrations) {
@@ -155,20 +159,20 @@ try {
     $run('view:cache');
     $run('event:cache');
 
-    if (is_dir($appPath . '/storage/app/public') && ! is_link($appPath . '/public/storage')) {
+    if (is_dir($appPath.'/storage/app/public') && ! is_link($appPath.'/public/storage')) {
         $run('storage:link');
     }
 
     $run('queue:restart');
 } finally {
     // Bring the site back up no matter what happened above.
-    \Illuminate\Support\Facades\Artisan::call('up');
+    Artisan::call('up');
     $steps[] = ['command' => 'up', 'exit' => 0, 'output' => ''];
 }
 
 http_response_code($failed ? 500 : 200);
 echo json_encode([
-    'ok'      => ! $failed,
+    'ok' => ! $failed,
     'migrate' => $runMigrations,
-    'steps'   => $steps,
+    'steps' => $steps,
 ], JSON_PRETTY_PRINT);
