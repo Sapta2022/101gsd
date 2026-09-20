@@ -154,12 +154,40 @@ function deploy_hook_extract(string $zipPath, string $destination): void
     @unlink($zipPath);
 }
 
+/**
+ * Recreate the storage/framework/* subdirectories Laravel needs at runtime.
+ * git doesn't track empty directories, so a release zip built from a git
+ * checkout/archive never includes these — without this, a fresh extraction
+ * (e.g. a brand-new environment such as a future "live" deploy) fails on
+ * view rendering/caching with "Please provide a valid cache path." Safe to
+ * run on every deploy: it only creates directories that don't already exist.
+ */
+function deploy_hook_ensure_storage_dirs(string $appPath): void
+{
+    $dirs = [
+        '/storage/framework/cache',
+        '/storage/framework/cache/data',
+        '/storage/framework/sessions',
+        '/storage/framework/testing',
+        '/storage/framework/views',
+    ];
+
+    foreach ($dirs as $dir) {
+        $full = $appPath.$dir;
+        if (! is_dir($full)) {
+            mkdir($full, 0775, true);
+        }
+    }
+}
+
 if ($step === 'extract' || $step === 'all') {
     deploy_hook_extract($appPath.'/release.zip', $appPath);
 
     if ($publicPath !== null && is_dir($publicPath)) {
         deploy_hook_extract($appPath.'/public-release.zip', $publicPath);
     }
+
+    deploy_hook_ensure_storage_dirs($appPath);
 
     if ($step === 'extract') {
         echo json_encode(['ok' => true, 'step' => 'extract']);
@@ -175,6 +203,12 @@ if ($step === 'extract' || $step === 'all') {
 // ---------------------------------------------------------------------
 if ($step === 'artisan' || $step === 'all') {
     $runMigrations = ! isset($payload['migrate']) || $payload['migrate'] !== false;
+
+    // Safety net: guarantee these exist even if this "artisan" call ever
+    // runs without a preceding "extract" call having gone through the
+    // patched code above (e.g. an older cached release, or step "all"
+    // on a host where extract's own mkdir was somehow skipped).
+    deploy_hook_ensure_storage_dirs($appPath);
 
     chdir($appPath);
     require $appPath.'/vendor/autoload.php';
