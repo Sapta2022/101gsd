@@ -96,6 +96,43 @@ if (! is_array($payload)) {
 }
 
 // ---------------------------------------------------------------------
+// 2.5. Extract the uploaded release archive(s), if present. GitHub Actions
+//      uploads one zip instead of thousands of individual files over FTP —
+//      some hosts drop long FTP sessions that open too many connections in
+//      quick succession. This extracts in place and removes the zip(s).
+// ---------------------------------------------------------------------
+function deploy_hook_extract(string $zipPath, string $destination): void
+{
+    if (! is_file($zipPath)) {
+        return;
+    }
+
+    $zip = new ZipArchive;
+
+    if ($zip->open($zipPath) !== true) {
+        deploy_hook_fail(500, "failed to open {$zipPath}");
+    }
+
+    if (! $zip->extractTo($destination)) {
+        $zip->close();
+        deploy_hook_fail(500, "failed to extract {$zipPath}");
+    }
+
+    $zip->close();
+    @unlink($zipPath);
+}
+
+deploy_hook_extract($appPath.'/release.zip', $appPath);
+
+// Live only: a second archive containing just the public/ folder's
+// contents, extracted to public_path instead (see deploy-hook.config.php).
+$publicPath = isset($config['public_path']) ? rtrim((string) $config['public_path'], '/') : null;
+
+if ($publicPath !== null && is_dir($publicPath)) {
+    deploy_hook_extract($appPath.'/public-release.zip', $publicPath);
+}
+
+// ---------------------------------------------------------------------
 // 3. Only ever run a fixed, known-safe set of Artisan commands, in a
 //    fixed order. The request may only choose whether "migrate" runs
 //    (staging/live both migrate by default; leave room to skip it for a
