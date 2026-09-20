@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static void set(string $group, string $key, mixed $value, ?string $type = null)
  * @method static void setMany(string $group, array $fields)
  *
- * @see \App\Services\SettingsService
+ * @see SettingsService
  */
 class Settings extends Facade
 {

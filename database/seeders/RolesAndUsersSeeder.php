@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Club;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -24,7 +23,7 @@ class RolesAndUsersSeeder extends Seeder
             ]
         );
 
-        if (! $user->hasRole('Super Admin')) {
+        if (!$user->hasRole('Super Admin')) {
             $user->assignRole($superAdmin);
         }
     }

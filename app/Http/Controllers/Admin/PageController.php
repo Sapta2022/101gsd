@@ -7,7 +7,6 @@ use App\Models\Page;
 use App\Models\PageRevision;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class PageController extends Controller
