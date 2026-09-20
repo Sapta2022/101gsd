@@ -72,16 +72,6 @@ jobs:
       - name: Laravel Pint (style check)
         run: vendor/bin/pint --test
 
-      - name: PHPUnit / Pest
-        run: php artisan test
-        env:
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: testing
-          DB_USERNAME: root
-          DB_PASSWORD: ""
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -91,5 +81,18 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      # Must run before the test suite: pages built on layouts/app.blade.php
+      # call @vite(...), which throws ViteManifestNotFoundException until
+      # public/build/manifest.json exists.
       - name: Build frontend assets
         run: npm run build
+
+      - name: PHPUnit / Pest
+        run: php artisan test
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: testing
+          DB_USERNAME: root
+          DB_PASSWORD: ""
