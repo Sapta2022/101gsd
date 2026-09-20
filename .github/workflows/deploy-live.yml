@@ -1,7 +1,10 @@
 name: Deploy to live
 
-# Fires on every push to "main" (the live branch). Identical build-and-deploy
-# steps to staging, pointed at the live FTP folder and live deploy hook.
+# Fires on every push to "main" (the live branch). Identical build steps to
+# staging, but the release is split into two uploads because 101gsd.in's
+# document root is fixed to public_html and can't be pointed at
+# live_app/public: the app code (everything except public/) goes to
+# live_app/, and only the built public/ folder's contents go to public_html/.
 #
 # This uses the "production" GitHub Environment, which you configure with a
 # required reviewer (Settings -> Environments -> production -> Required
@@ -48,7 +51,7 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
-      - name: Upload release over FTPS
+      - name: Upload application files (everything except public/) over FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.LIVE_FTP_HOST }}
@@ -56,7 +59,8 @@ jobs:
           password: ${{ secrets.LIVE_FTP_PASSWORD }}
           protocol: ftps
           port: 21
-          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR }}
+          local-dir: ./
+          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
           # Never mirror-delete: only ever add/update files this build
           # produces. A missing file on the server (deploy-hook.config.php,
           # the renamed public entrypoint, storage/ contents) must never be
@@ -79,6 +83,22 @@ jobs:
             storage/framework/views/**
             storage/logs/**
             deploy/deploy-hook.config.php
+            public/**
+
+      - name: Upload public assets (public/ contents) over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.LIVE_FTP_HOST }}
+          username: ${{ secrets.LIVE_FTP_USERNAME }}
+          password: ${{ secrets.LIVE_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: public/
+          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_PUBLIC }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
 
       - name: Trigger post-deploy Artisan tasks
         env:
