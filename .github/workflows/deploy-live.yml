@@ -108,13 +108,18 @@ jobs:
           FTP_DIR: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
         run: |
           set -euo pipefail
-          curl --ftp-ssl --show-error --fail \
+          # Strip any leading/trailing slashes from FTP_DIR so exactly one
+          # "/" always separates the host from the directory, regardless of
+          # how the secret's value happens to be formatted.
+          DIR_CLEAN="${FTP_DIR#/}"
+          DIR_CLEAN="${DIR_CLEAN%/}"
+          curl --ftp-ssl-reqd --show-error --fail \
             -T dist/release.zip \
-            "ftp://${FTP_HOST}${FTP_DIR}/release.zip" \
+            "ftp://${FTP_HOST}/${DIR_CLEAN}/release.zip" \
             --user "${FTP_USER}:${FTP_PASS}"
-          curl --ftp-ssl --show-error --fail \
+          curl --ftp-ssl-reqd --show-error --fail \
             -T dist/public-release.zip \
-            "ftp://${FTP_HOST}${FTP_DIR}/public-release.zip" \
+            "ftp://${FTP_HOST}/${DIR_CLEAN}/public-release.zip" \
             --user "${FTP_USER}:${FTP_PASS}"
 
       - name: Trigger release extraction
