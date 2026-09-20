@@ -1,16 +1,27 @@
 name: Deploy to live
 
-# Fires on every push to "main" (the live branch). Same build steps as
-# staging, and now the same transport too: the app is zipped and the
-# built public/ folder is zipped separately (since 101gsd.in's document
+# Fires on every push to "main" (the live branch). The app is zipped and
+# the built public/ folder is zipped separately (since 101gsd.in's document
 # root is fixed to public_html and can't be pointed at live_app/public),
 # both zips are FTP-uploaded to live_app/, and deploy/hook.php unzips
 # each into the right place — the app zip into live_app/ itself, and the
 # public zip into public_html/ (via deploy-hook.config.php's public_path).
 #
-# Zipping first avoids uploading the whole vendor/ tree as thousands of
-# individual FTP connections, which this host has been observed to hang
-# on — see deploy/hook.php's own docblock.
+# The two zips are uploaded with plain curl FTPS PUTs, NOT a directory-sync
+# action. A directory-diffing FTP action (e.g. FTP-Deploy-Action) compares
+# local-dir against everything already on the server and deletes anything
+# not present locally — with local-dir reduced to just these two zips, that
+# previously deleted live_app's entire vendor/app/bootstrap/config/storage/
+# deploy tree in production. Never point a syncing/mirroring FTP action at
+# a directory that holds anything this workflow doesn't fully reproduce.
+#
+# public_html/index.php is NOT included in public-release.zip — it has
+# been manually customized on the server (it points sideways into
+# live_app/ instead of Laravel's usual parent-directory convention, since
+# live_app is a sibling of public_html, not its parent) and must never be
+# overwritten by a deploy with the stock version from this repo's public/
+# folder (which is also used, unmodified, by staging_app where the
+# default parent-relative paths ARE correct).
 #
 # This uses the "production" GitHub Environment, which you configure with a
 # required reviewer (Settings -> Environments -> production -> Required
@@ -83,23 +94,28 @@ jobs:
             --exclude='release-public/**'
           cd release-app && zip -rq ../dist/release.zip . && cd ..
 
-      - name: Build public release archive (public/ contents only)
+      - name: Build public release archive (public/ contents, excluding index.php)
         run: |
           mkdir -p release-public
-          rsync -a public/ release-public/
+          rsync -a public/ release-public/ --exclude='index.php'
           cd release-public && zip -rq ../dist/public-release.zip . && cd ..
 
-      - name: Upload release archives over FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.LIVE_FTP_HOST }}
-          username: ${{ secrets.LIVE_FTP_USERNAME }}
-          password: ${{ secrets.LIVE_FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: dist/
-          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
-          dangerous-clean-slate: false
+      - name: Upload release archives over FTPS (plain file upload — no directory sync, nothing gets deleted)
+        env:
+          FTP_HOST: ${{ secrets.LIVE_FTP_HOST }}
+          FTP_USER: ${{ secrets.LIVE_FTP_USERNAME }}
+          FTP_PASS: ${{ secrets.LIVE_FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
+        run: |
+          set -euo pipefail
+          curl --ftp-ssl --show-error --fail \
+            -T dist/release.zip \
+            "ftp://${FTP_HOST}${FTP_DIR}/release.zip" \
+            --user "${FTP_USER}:${FTP_PASS}"
+          curl --ftp-ssl --show-error --fail \
+            -T dist/public-release.zip \
+            "ftp://${FTP_HOST}${FTP_DIR}/public-release.zip" \
+            --user "${FTP_USER}:${FTP_PASS}"
 
       - name: Trigger release extraction
         env:
