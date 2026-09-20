@@ -107,7 +107,7 @@ function deploy_hook_extract(string $zipPath, string $destination): void
         return;
     }
 
-    $zip = new ZipArchive();
+    $zip = new ZipArchive;
 
     if ($zip->open($zipPath) !== true) {
         deploy_hook_fail(500, "failed to open {$zipPath}");
