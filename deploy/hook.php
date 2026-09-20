@@ -3,14 +3,14 @@
 /**
  * 101GSD deploy hook — runs post-deploy Artisan tasks with no shell/SSH access.
  *
- * GitHub Actions FTP-uploads the built release (vendor/ and node_modules build
- * output included, since composer/npm cannot run on this host) and then POSTs
- * to a small public entrypoint that requires this file (see
- * deploy/public-entrypoint.example.php — this file itself is NOT web-facing;
- * it lives outside public/, one level above the docroot). This script
- * bootstraps Laravel in-process and calls Artisan commands as PHP function
- * calls — no exec()/shell_exec() needed, so it works even when those are
- * disabled on shared hosting.
+ * GitHub Actions FTP-uploads a single release.zip (built with vendor/ and
+ * compiled frontend assets included, since composer/npm cannot run on this
+ * host) and then POSTs to a small public entrypoint that requires this file
+ * (see deploy/public-entrypoint.example.php — this file itself is NOT
+ * web-facing; it lives outside public/, one level above the docroot). This
+ * script extracts the archive, then bootstraps Laravel in-process and calls
+ * Artisan commands as PHP function calls — no exec()/shell_exec() needed,
+ * so it works even when those are disabled on shared hosting.
  *
  * SECURITY
  * - The public entrypoint that requires this file is created by hand under
@@ -26,6 +26,26 @@
  */
 
 declare(strict_types=1);
+
+// Turn PHP warnings/notices into catchable exceptions, and turn any truly
+// fatal error (the kind that otherwise kills the script silently) into a
+// proper JSON response instead of a blank HTTP 500 — makes remote
+// debugging possible without needing direct access to the server's logs.
+set_error_handler(function (int $severity, string $message, string $file, int $line): bool {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+register_shutdown_function(function (): void {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        http_response_code(500);
+        echo json_encode([
+            'ok' => false,
+            'error' => 'fatal: '.$error['message'].' in '.$error['file'].':'.$error['line'],
+        ]);
+    }
+});
+
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
@@ -90,11 +110,6 @@ if (! hash_equals($expected, $sigHeader)) {
     deploy_hook_fail(401, 'invalid signature');
 }
 
-$payload = json_decode($raw, true);
-if (! is_array($payload)) {
-    $payload = [];
-}
-
 // ---------------------------------------------------------------------
 // 2.5. Extract the uploaded release archive(s), if present. GitHub Actions
 //      uploads one zip instead of thousands of individual files over FTP —
@@ -105,6 +120,10 @@ function deploy_hook_extract(string $zipPath, string $destination): void
 {
     if (! is_file($zipPath)) {
         return;
+    }
+
+    if (! class_exists(ZipArchive::class)) {
+        deploy_hook_fail(500, 'PHP zip extension (ext-zip) is not available');
     }
 
     $zip = new ZipArchive;
@@ -130,6 +149,11 @@ $publicPath = isset($config['public_path']) ? rtrim((string) $config['public_pat
 
 if ($publicPath !== null && is_dir($publicPath)) {
     deploy_hook_extract($appPath.'/public-release.zip', $publicPath);
+}
+
+$payload = json_decode($raw, true);
+if (! is_array($payload)) {
+    $payload = [];
 }
 
 // ---------------------------------------------------------------------
