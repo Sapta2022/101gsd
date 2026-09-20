@@ -3,7 +3,28 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/*
+ * Brand palette, from the 101GSD logo and reference layouts:
+ *  - Gold is the primary brand/CTA color (logo mark + hero mockup's
+ *    bullets and SUBMIT button).
+ *  - Blue is a deliberate secondary accent only (links, focus rings,
+ *    secondary buttons) — never a primary CTA, so gold stays dominant.
+ *  - Dark, near-black surfaces with a blurred photo backdrop for hero
+ *    sections, matching both reference mockups.
+ * These are DEFAULTS. Super Admin > Settings > Appearance overrides
+ * them at runtime — see resources/views/partials/appearance-vars.blade.php.
+ */
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: 'Playfair Display', ui-serif, Georgia, 'Times New Roman', serif;
+
+    --color-primary: #f2b90c;
+    --color-primary-foreground: #16130a;
+    --color-secondary: #5b7fe0;
+    --color-secondary-foreground: #ffffff;
+    --color-ink: #111111;
+    --color-ink-muted: #6b7280;
+    --color-surface: #ffffff;
+    --color-surface-dark: #16130a;
 }
