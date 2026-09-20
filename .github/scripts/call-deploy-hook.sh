@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
-# Signs and sends the post-deploy request to deploy/hook.php on the server.
-# Usage: call-deploy-hook.sh <migrate: true|false>
-# Reads DEPLOY_HOOK_URL and DEPLOY_HOOK_SECRET from the environment.
+# Signs and sends one request to the deploy hook.
+# Usage: call-deploy-hook.sh <migrate: true|false> <step: extract|artisan|all>
 set -euo pipefail
 
 migrate="${1:-true}"
+step="${2:-all}"
 
-: "${DEPLOY_HOOK_URL:?DEPLOY_HOOK_URL is not set}"
-: "${DEPLOY_HOOK_SECRET:?DEPLOY_HOOK_SECRET is not set}"
-
-body=$(printf '{"migrate":%s}' "$migrate")
+body=$(printf '{"migrate":%s,"step":"%s"}' "$migrate" "$step")
 timestamp=$(date +%s)
 signature="sha256=$(printf '%s.%s' "$timestamp" "$body" | openssl dgst -sha256 -hmac "$DEPLOY_HOOK_SECRET" | sed 's/^.* //')"
 
-response_file=$(mktemp)
-http_status=$(curl -sS -o "$response_file" -w '%{http_code}' \
-  -X POST "$DEPLOY_HOOK_URL" \
+response=$(curl -sS -w '\n%{http_code}' -X POST "$DEPLOY_HOOK_URL" \
   -H "Content-Type: application/json" \
-  -H "X-Deploy-Signature: $signature" \
   -H "X-Deploy-Timestamp: $timestamp" \
+  -H "X-Deploy-Signature: $signature" \
   -d "$body")
 
-echo "Deploy hook responded with HTTP $http_status:"
-cat "$response_file"
-echo
+http_code=$(echo "$response" | tail -n1)
+body_out=$(echo "$response" | sed '$d')
 
-if [ "$http_status" -ne 200 ]; then
-  echo "::error::Deploy hook reported a failure (HTTP $http_status) — the app was left in maintenance mode by the hook's own error handling; check the response above and the server's storage/logs."
+echo "Deploy hook ($step) responded with HTTP $http_code:"
+echo "$body_out"
+
+if [ "$http_code" != "200" ]; then
+  echo "::error::Deploy hook step '$step' reported a failure (HTTP $http_code) — check the response above and the server's storage/logs."
   exit 1
 fi

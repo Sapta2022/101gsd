@@ -63,8 +63,14 @@ jobs:
           server-dir: ${{ secrets.STAGING_FTP_SERVER_DIR }}
           dangerous-clean-slate: false
 
+       - name: Extract uploaded release
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.STAGING_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.STAGING_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true extract
+
       - name: Trigger post-deploy Artisan tasks
         env:
           DEPLOY_HOOK_URL: ${{ secrets.STAGING_DEPLOY_HOOK_URL }}
           DEPLOY_HOOK_SECRET: ${{ secrets.STAGING_DEPLOY_HOOK_SECRET }}
-        run: bash .github/scripts/call-deploy-hook.sh true
+        run: bash .github/scripts/call-deploy-hook.sh true artisan
