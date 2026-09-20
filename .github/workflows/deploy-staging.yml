@@ -45,7 +45,13 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
-      - name: Upload release over FTPS
+      - name: Package release into a single archive
+        run: |
+          mkdir -p /tmp/release dist
+          rsync -a --exclude-from='.github/deploy-exclude.txt' ./ /tmp/release/
+          cd /tmp/release && zip -rq "$GITHUB_WORKSPACE/dist/release.zip" .
+
+      - name: Upload release archive over FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.STAGING_FTP_HOST }}
@@ -53,34 +59,9 @@ jobs:
           password: ${{ secrets.STAGING_FTP_PASSWORD }}
           protocol: ftps
           port: 21
+          local-dir: dist/
           server-dir: ${{ secrets.STAGING_FTP_SERVER_DIR }}
-          # Never mirror-delete: only ever add/update files this build
-          # produces. A missing file on the server (deploy-hook.config.php,
-          # the renamed public entrypoint, storage/ contents) must never be
-          # removed just because this checkout doesn't contain it.
           dangerous-clean-slate: false
-          # Nothing here is deleted from the checkout — the workflow still
-          # needs .github/scripts after this step — it is only left out of
-          # the upload. Never uploaded: dev/CI-only files, and (critically)
-          # server-only state: the live .env, writable storage (uploads,
-          # logs, cache, sessions), and the deploy hook's own secret config.
-          exclude: |
-            **/.git*
-            **/.git*/**
-            .github/**
-            node_modules/**
-            tests/**
-            .env.example
-            .env.ci
-            phpunit.xml
-            README.md
-            **/.env
-            storage/app/**
-            storage/framework/cache/**
-            storage/framework/sessions/**
-            storage/framework/views/**
-            storage/logs/**
-            deploy/deploy-hook.config.php
 
       - name: Trigger post-deploy Artisan tasks
         env:
