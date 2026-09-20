@@ -1,10 +1,16 @@
 name: Deploy to live
 
-# Fires on every push to "main" (the live branch). Identical build steps to
-# staging, but the release is split into two uploads because 101gsd.in's
-# document root is fixed to public_html and can't be pointed at
-# live_app/public: the app code (everything except public/) goes to
-# live_app/, and only the built public/ folder's contents go to public_html/.
+# Fires on every push to "main" (the live branch). Same build steps as
+# staging, and now the same transport too: the app is zipped and the
+# built public/ folder is zipped separately (since 101gsd.in's document
+# root is fixed to public_html and can't be pointed at live_app/public),
+# both zips are FTP-uploaded to live_app/, and deploy/hook.php unzips
+# each into the right place — the app zip into live_app/ itself, and the
+# public zip into public_html/ (via deploy-hook.config.php's public_path).
+#
+# Zipping first avoids uploading the whole vendor/ tree as thousands of
+# individual FTP connections, which this host has been observed to hang
+# on — see deploy/hook.php's own docblock.
 #
 # This uses the "production" GitHub Environment, which you configure with a
 # required reviewer (Settings -> Environments -> production -> Required
@@ -51,41 +57,39 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
-      - name: Upload application files (everything except public/) over FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.LIVE_FTP_HOST }}
-          username: ${{ secrets.LIVE_FTP_USERNAME }}
-          password: ${{ secrets.LIVE_FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./
-          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
-          # Never mirror-delete: only ever add/update files this build
-          # produces. A missing file on the server (deploy-hook.config.php,
-          # the renamed public entrypoint, storage/ contents) must never be
-          # removed just because this checkout doesn't contain it.
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            .github/**
-            node_modules/**
-            tests/**
-            .env.example
-            .env.ci
-            phpunit.xml
-            README.md
-            **/.env
-            storage/app/**
-            storage/framework/cache/**
-            storage/framework/sessions/**
-            storage/framework/views/**
-            storage/logs/**
-            deploy/deploy-hook.config.php
-            public/**
+      - name: Build app release archive (everything except public/)
+        run: |
+          mkdir -p dist release-app
+          rsync -a ./ release-app/ \
+            --exclude='.git' \
+            --exclude='.git/**' \
+            --exclude='.github/**' \
+            --exclude='node_modules/**' \
+            --exclude='tests/**' \
+            --exclude='.env' \
+            --exclude='.env.example' \
+            --exclude='.env.ci' \
+            --exclude='phpunit.xml' \
+            --exclude='README.md' \
+            --exclude='public/**' \
+            --exclude='storage/app/**' \
+            --exclude='storage/framework/cache/**' \
+            --exclude='storage/framework/sessions/**' \
+            --exclude='storage/framework/views/**' \
+            --exclude='storage/logs/**' \
+            --exclude='deploy/deploy-hook.config.php' \
+            --exclude='dist/**' \
+            --exclude='release-app/**' \
+            --exclude='release-public/**'
+          cd release-app && zip -rq ../dist/release.zip . && cd ..
 
-      - name: Upload public assets (public/ contents) over FTPS
+      - name: Build public release archive (public/ contents only)
+        run: |
+          mkdir -p release-public
+          rsync -a public/ release-public/
+          cd release-public && zip -rq ../dist/public-release.zip . && cd ..
+
+      - name: Upload release archives over FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.LIVE_FTP_HOST }}
@@ -93,15 +97,18 @@ jobs:
           password: ${{ secrets.LIVE_FTP_PASSWORD }}
           protocol: ftps
           port: 21
-          local-dir: public/
-          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_PUBLIC }}
+          local-dir: dist/
+          server-dir: ${{ secrets.LIVE_FTP_SERVER_DIR_APP }}
           dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
+
+      - name: Trigger release extraction
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.LIVE_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.LIVE_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true extract
 
       - name: Trigger post-deploy Artisan tasks
         env:
           DEPLOY_HOOK_URL: ${{ secrets.LIVE_DEPLOY_HOOK_URL }}
           DEPLOY_HOOK_SECRET: ${{ secrets.LIVE_DEPLOY_HOOK_SECRET }}
-        run: bash .github/scripts/call-deploy-hook.sh true
+        run: bash .github/scripts/call-deploy-hook.sh true artisan
