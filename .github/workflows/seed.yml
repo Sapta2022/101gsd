@@ -1,0 +1,43 @@
+name: Seed database (manual)
+
+# Runs php artisan db:seed --force on a chosen environment, once, on
+# demand — never automatically. Use this the first time an environment's
+# database has fresh migrations but no roles/admin user/settings yet.
+# Safe to re-run: RolesAndUsersSeeder uses firstOrCreate, but SettingsSeeder
+# will overwrite any Appearance/General changes made since the last seed
+# back to their defaults, so don't run this against an environment real
+# admins have already customized through the Settings screens.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which environment to seed"
+        required: true
+        type: choice
+        options:
+          - staging
+          - live
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment == 'live' && 'production' || 'staging' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Seed staging
+        if: ${{ inputs.environment == 'staging' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.STAGING_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.STAGING_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true seed
+
+      - name: Seed live
+        if: ${{ inputs.environment == 'live' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.LIVE_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_SECRET: ${{ secrets.LIVE_DEPLOY_HOOK_SECRET }}
+        run: bash .github/scripts/call-deploy-hook.sh true seed

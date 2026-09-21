@@ -12,6 +12,8 @@
  * per request, the work is split across two separate calls instead of one:
  *   - step "extract": unzip the release archive(s) and return immediately
  *   - step "artisan": bootstrap Laravel and run the fixed Artisan sequence
+ *   - step "seed": bootstrap Laravel and run `db:seed --force` — triggered
+ *     by hand only (see .github/workflows/seed.yml), never automatically
  * Each step alone comfortably fits inside the host's limits even though the
  * two together would not.
  *
@@ -256,6 +258,15 @@ if ($step === 'artisan' || $step === 'all') {
             '--retry' => 60,
         ]);
 
+        // A stale bootstrap/cache/config.php (or route/event cache) from an
+        // earlier successful deploy would otherwise silently override any
+        // config/*.php files a newer release adds or changes, since Laravel
+        // reads the cache instead of the real files once one exists. This
+        // step alone doesn't cost anything if no cache exists yet.
+        $run('config:clear');
+        $run('route:clear');
+        $run('event:clear');
+
         if ($runMigrations) {
             $run('migrate', ['--force' => true]);
         }
@@ -282,5 +293,36 @@ if ($step === 'artisan' || $step === 'all') {
         'step' => 'artisan',
         'migrate' => $runMigrations,
         'steps' => $steps,
+    ], JSON_PRETTY_PRINT);
+}
+
+// ---------------------------------------------------------------------
+// 5. Run the database seeders. Deliberately its own step, never part of
+//    "extract"/"artisan"/"all" — seeding must never fire automatically on
+//    every ordinary deploy (SettingsSeeder would silently overwrite any
+//    live Appearance/General settings changes back to their defaults).
+//    Trigger it by hand, once, right after the first successful migrate
+//    on a fresh environment (see .github/workflows/seed.yml).
+// ---------------------------------------------------------------------
+if ($step === 'seed') {
+    deploy_hook_ensure_storage_dirs($appPath);
+
+    chdir($appPath);
+    require $appPath.'/vendor/autoload.php';
+
+    /** @var Application $app */
+    $app = require $appPath.'/bootstrap/app.php';
+
+    $kernel = $app->make(Kernel::class);
+    $kernel->bootstrap();
+
+    $exit = Artisan::call('db:seed', ['--force' => true]);
+    $out = Artisan::output();
+
+    http_response_code($exit === 0 ? 200 : 500);
+    echo json_encode([
+        'ok' => $exit === 0,
+        'step' => 'seed',
+        'output' => trim($out),
     ], JSON_PRETTY_PRINT);
 }
