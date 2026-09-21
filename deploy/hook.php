@@ -212,6 +212,24 @@ if ($step === 'artisan' || $step === 'all') {
     // on a host where extract's own mkdir was somehow skipped).
     deploy_hook_ensure_storage_dirs($appPath);
 
+    // Delete any leftover bootstrap cache files BEFORE Laravel boots at
+    // all. Kernel::bootstrap() below loads config/route/event state
+    // immediately -- if a stale bootstrap/cache/config.php from an older
+    // deploy (predating a newer config/*.php file) still exists at that
+    // moment, LoadConfiguration reads only the cache and never looks at
+    // config/*.php on disk. Running the "config:clear" Artisan command
+    // afterward is too late: it only deletes the cache file, it can't
+    // undo config that Laravel already loaded into memory for this
+    // request. Deleting the raw files here, before bootstrap/app.php is
+    // even required, guarantees the very first boot reads fresh
+    // config/route/event files from disk.
+    foreach (['config.php', 'routes-v7.php', 'events.php'] as $cacheFile) {
+        $cachePath = $appPath.'/bootstrap/cache/'.$cacheFile;
+        if (is_file($cachePath)) {
+            @unlink($cachePath);
+        }
+    }
+
     chdir($appPath);
     require $appPath.'/vendor/autoload.php';
 
