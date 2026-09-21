@@ -256,6 +256,15 @@ if ($step === 'artisan' || $step === 'all') {
             '--retry' => 60,
         ]);
 
+        // A stale bootstrap/cache/config.php (or route/event cache) from an
+        // earlier successful deploy would otherwise silently override any
+        // config/*.php files a newer release adds or changes, since Laravel
+        // reads the cache instead of the real files once one exists. This
+        // step alone doesn't cost anything if no cache exists yet.
+        $run('config:clear');
+        $run('route:clear');
+        $run('event:clear');
+
         if ($runMigrations) {
             $run('migrate', ['--force' => true]);
         }
